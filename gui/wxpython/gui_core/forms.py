@@ -58,6 +58,7 @@ import queue as Queue
 import codecs
 
 from threading import Thread
+from pathlib import Path
 
 import wx
 
@@ -65,7 +66,7 @@ import wx.lib.colourselect as csel
 import wx.lib.filebrowsebutton as filebrowse
 from wx.lib.newevent import NewEvent
 
-import xml.etree.ElementTree as etree
+import xml.etree.ElementTree as ET
 
 # needed when started from command line and for testing
 if __name__ == "__main__":
@@ -139,8 +140,7 @@ def text_beautify(someString, width=70):
                 textwrap.wrap(utils.normalize_whitespace(someString), width)
             ).strip(".,;:")
         )
-    else:
-        return escape_ampersand(utils.normalize_whitespace(someString).strip(".,;:"))
+    return escape_ampersand(utils.normalize_whitespace(someString).strip(".,;:"))
 
 
 def escape_ampersand(text):
@@ -307,8 +307,6 @@ class UpdateThread(Thread):
                     pTable = self.task.get_param(
                         "dbtable", element="element", raiseError=False
                     )
-                    if pTable:
-                        table = pTable.get("value", "")
 
             if name == "LayerSelect":
                 # determine format
@@ -1546,7 +1544,6 @@ class CmdPanel(wx.Panel):
                         if value:
                             selection.SetValue(value)
 
-                        formatSelector = True
                         # A gselect.Select is a combobox with two children: a textctl
                         # and a popupwindow; we target the textctl here
                         textWin = selection.GetTextCtrl()
@@ -2018,7 +2015,7 @@ class CmdPanel(wx.Panel):
                     # check wildcard
                     try:
                         fExt = os.path.splitext(p.get("key_desc", ["*.*"])[0])[1]
-                    except:
+                    except IndexError:
                         fExt = None
                     if not fExt:
                         fMask = "*"
@@ -2037,7 +2034,7 @@ class CmdPanel(wx.Panel):
                         dialogTitle=_("Choose %s")
                         % p.get("description", _("file")).lower(),
                         buttonText=_("Browse"),
-                        startDirectory=os.getcwd(),
+                        startDirectory=str(Path.cwd()),
                         fileMode=fmode,
                         changeCallback=self.OnSetValue,
                     )
@@ -2148,7 +2145,7 @@ class CmdPanel(wx.Panel):
                         dialogTitle=_("Choose %s")
                         % p.get("description", _("Directory")),
                         buttonText=_("Browse"),
-                        startDirectory=os.getcwd(),
+                        startDirectory=str(Path.cwd()),
                         newDirectory=True,
                         changeCallback=self.OnSetValue,
                     )
@@ -2590,7 +2587,7 @@ class CmdPanel(wx.Panel):
 
         data = ""
         try:
-            f = open(path, "r")
+            f = open(path)
         except OSError as e:
             gcmd.GError(
                 parent=self,
@@ -2627,7 +2624,7 @@ class CmdPanel(wx.Panel):
         dlg = wx.FileDialog(
             parent=self,
             message=_("Save input as..."),
-            defaultDir=os.getcwd(),
+            defaultDir=str(Path.cwd()),
             style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT,
         )
 
@@ -2766,7 +2763,7 @@ class CmdPanel(wx.Panel):
             if event.GetId() == verbose.GetId() and quiet.IsChecked():
                 quiet.SetValue(False)
                 self.task.get_flag("quiet")["value"] = False
-            elif verbose.IsChecked():
+            elif event.GetId() == quiet.GetId() and verbose.IsChecked():
                 verbose.SetValue(False)
                 self.task.get_flag("verbose")["value"] = False
 
@@ -3208,8 +3205,7 @@ class GUI:
 
         if self.checkError:
             return self.grass_task, err
-        else:
-            return self.grass_task
+        return self.grass_task
 
     def GetCommandInputMapParamKey(self, cmd):
         """Get parameter key for input raster/vector map
@@ -3221,7 +3217,7 @@ class GUI:
         """
         # parse the interface description
         if not self.grass_task:
-            tree = etree.fromstring(gtask.get_interface_description(cmd))
+            tree = ET.fromstring(gtask.get_interface_description(cmd))
             self.grass_task = gtask.processTask(tree).get_task()
 
             for p in self.grass_task.params:
