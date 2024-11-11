@@ -1,27 +1,24 @@
-from __future__ import (
-    nested_scopes,
-    generators,
-    division,
-    absolute_import,
-    with_statement,
-    print_function,
-    unicode_literals,
-)
+import contextlib
 import os
 import sys
 import multiprocessing as mltp
 import subprocess as sub
 import shutil as sht
+from math import ceil
 
 from grass.script.setup import write_gisrc
+from grass.script import append_node_pid, legalize_vector_name
 
 from grass.pygrass.gis import Mapset, Location
 from grass.pygrass.gis.region import Region
 from grass.pygrass.modules import Module
 from grass.pygrass.utils import get_mapset_raster, findmaps
 
-from grass.pygrass.modules.grid.split import split_region_tiles
-from grass.pygrass.modules.grid.patch import rpatch_map
+from grass.pygrass.modules.grid.split import (
+    split_region_tiles,
+    split_region_in_overlapping_tiles,
+)
+from grass.pygrass.modules.grid.patch import rpatch_map, rpatch_map_r_patch_backend
 
 
 def select(parms, ptype):
@@ -45,10 +42,9 @@ def select(parms, ptype):
     """
     for k in parms:
         par = parms[k]
-        if par.type == ptype or par.typedesc == ptype and par.value:
+        if par.type == ptype or (par.typedesc == ptype and par.value):
             if par.multiple:
-                for val in par.value:
-                    yield val
+                yield from par.value
             else:
                 yield par.value
 
@@ -91,10 +87,9 @@ def copy_mapset(mapset, path):
     >>> sorted(os.listdir(os.path.join(path, 'PERMANENT')))
     ['DEFAULT_WIND', 'PROJ_INFO', 'PROJ_UNITS', 'VAR', 'WIND']
     >>> sorted(os.listdir(os.path.join(path, mname)))   # doctest: +ELLIPSIS
-    [...'SEARCH_PATH',...'WIND']
+    [...'WIND'...]
     >>> import shutil
     >>> shutil.rmtree(path)
-
     """
     per_old = os.path.join(mapset.gisdbase, mapset.location, "PERMANENT")
     per_new = os.path.join(path, "PERMANENT")
@@ -126,10 +121,8 @@ def read_gisrc(gisrc):
     ...                                      genv['GISDBASE']))
     True
     """
-    with open(gisrc, "r") as gfile:
-        gis = dict(
-            [(k.strip(), v.strip()) for k, v in [row.split(":", 1) for row in gfile]]
-        )
+    with open(gisrc) as gfile:
+        gis = {k.strip(): v.strip() for k, v in [row.split(":", 1) for row in gfile]}
     return gis["MAPSET"], gis["LOCATION_NAME"], gis["GISDBASE"]
 
 
@@ -152,7 +145,7 @@ def get_mapset(gisrc_src, gisrc_dst):
         copy_special_mapset_files(path_src, path_dst)
     src = Mapset(msrc, lsrc, gsrc)
     dst = Mapset(mdst, ldst, gdst)
-    visible = [m for m in src.visible]
+    visible = list(src.visible)
     if src.name not in visible:
         visible.append(src.name)
     dst.visible.extend(visible)
@@ -188,13 +181,13 @@ def copy_groups(groups, gisrc_src, gisrc_dst, region=None):
 
     src = read_gisrc(gisrc_src)
     dst = read_gisrc(gisrc_dst)
-    rm = True if src[2] != dst[2] else False
+    rm = src[2] != dst[2]
     all_rasts = [r[0] for r in findmaps("raster", location=dst[1], gisdbase=dst[2])]
     for grp in groups:
         # change gisdbase to src
         env["GISRC"] = gisrc_src
         get_grp(group=grp, env_=env)
-        rasts = [r for r in get_grp.outputs.stdout.split()]
+        rasts = list(get_grp.outputs.stdout.split())
         # change gisdbase to dst
         env["GISRC"] = gisrc_dst
         rast2cp = [r for r in rasts if rmloc(r) not in all_rasts]
@@ -351,8 +344,8 @@ def get_cmd(cmdd):
             if isinstance(vals, list)
         )
     )
-    cmd.extend(("-%s" % (flg) for flg in cmdd["flags"] if len(flg) == 1))
-    cmd.extend(("--%s" % (flg[0]) for flg in cmdd["flags"] if len(flg) > 1))
+    cmd.extend(f"-{flg}" for flg in cmdd["flags"] if len(flg) == 1)
+    cmd.extend(f"--{flg[0]}" for flg in cmdd["flags"] if len(flg) > 1)
     return cmd
 
 
@@ -381,7 +374,7 @@ def cmd_exe(args):
     src, dst = get_mapset(gisrc_src, gisrc_dst)
     env = os.environ.copy()
     env["GISRC"] = gisrc_dst
-    shell = True if sys.platform == "win32" else False
+    shell = sys.platform == "win32"
     if mapnames:
         inputs = dict(cmd["inputs"])
         # reset the inputs to
@@ -405,7 +398,7 @@ def cmd_exe(args):
     os.remove(gisrc_dst)
 
 
-class GridModule(object):
+class GridModule:
     # TODO maybe also i.* could be supported easily
     """Run GRASS raster commands in a multiprocessing mode.
 
@@ -423,10 +416,16 @@ class GridModule(object):
     :type split: bool
     :param mapset_prefix: if specified created mapsets start with this prefix
     :type mapset_prefix: str
+    :param patch_backend: "r.patch", "RasterRow", or None for for default
+    :type patch_backend: None or str
     :param run_: if False only instantiate the object
     :type run_: bool
     :param args: give all the parameters to the command
     :param kargs: give all the parameters to the command
+
+    When patch_backend is None, the RasterRow method is used for patching the result.
+    When patch_backend is "r.patch", r.patch is used with nprocs=processes.
+    r.patch can only be used when overlap is 0.
 
     >>> grd = GridModule('r.slope.aspect',
     ...                  width=500, height=500, overlap=2,
@@ -434,6 +433,11 @@ class GridModule(object):
     ...                  elevation='elevation',
     ...                  slope='slope', aspect='aspect', overwrite=True)
     >>> grd.run()
+
+    Temporary mapsets created start with a generated prefix which is unique for each
+    process (includes PID and node name). If more instances of this class are used in
+    parallel from one process with the same module, a custom *mapset_prefix* needs to
+    be provided.
     """
 
     def __init__(
@@ -452,6 +456,7 @@ class GridModule(object):
         start_col=0,
         out_prefix="",
         mapset_prefix=None,
+        patch_backend=None,
         *args,
         **kargs,
     ):
@@ -462,37 +467,53 @@ class GridModule(object):
         self.height = height
         self.overlap = overlap
         self.processes = processes
-        self.region = region if region else Region()
+        self.region = region or Region()
         self.start_row = start_row
         self.start_col = start_col
         self.out_prefix = out_prefix
         self.log = log
         self.move = move
+        # by default RasterRow is used as previously
+        # if overlap > 0, r.patch won't work properly
+        if not patch_backend:
+            self.patch_backend = "RasterRow"
+        elif patch_backend not in {"r.patch", "RasterRow"}:
+            raise RuntimeError(
+                _("Parameter patch_backend must be 'r.patch' or 'RasterRow'")
+            )
+        elif patch_backend == "r.patch" and self.overlap:
+            raise RuntimeError(
+                _("Patching backend 'r.patch' doesn't work for overlap > 0")
+            )
+        else:
+            self.patch_backend = patch_backend
         self.gisrc_src = os.environ["GISRC"]
         self.n_mset, self.gisrc_dst = None, None
+        self.estimate_tile_size()
         if self.move:
             self.n_mset = copy_mapset(self.mset, self.move)
             self.gisrc_dst = write_gisrc(
                 self.n_mset.gisdbase, self.n_mset.location, self.n_mset.name
             )
-            rasters = [r for r in select(self.module.inputs, "raster")]
+            rasters = list(select(self.module.inputs, "raster"))
             if rasters:
                 copy_rasters(
                     rasters, self.gisrc_src, self.gisrc_dst, region=self.region
                 )
-            vectors = [v for v in select(self.module.inputs, "vector")]
+            vectors = list(select(self.module.inputs, "vector"))
             if vectors:
                 copy_vectors(vectors, self.gisrc_src, self.gisrc_dst)
-            groups = [g for g in select(self.module.inputs, "group")]
+            groups = list(select(self.module.inputs, "group"))
             if groups:
                 copy_groups(groups, self.gisrc_src, self.gisrc_dst, region=self.region)
-        self.bboxes = split_region_tiles(
-            region=region, width=width, height=height, overlap=overlap
+        self.bboxes = split_region_in_overlapping_tiles(
+            region=region, width=self.width, height=self.height, overlap=overlap
         )
         if mapset_prefix:
-            self.msetstr = mapset_prefix + "_%03d_%03d"
+            self.mapset_prefix = mapset_prefix
         else:
-            self.msetstr = cmd.replace(".", "") + "_%03d_%03d"
+            self.mapset_prefix = append_node_pid("grid_" + legalize_vector_name(cmd))
+        self.msetstr = self.mapset_prefix + "_%03d_%03d"
         self.inlist = None
         if split:
             self.split()
@@ -514,7 +535,7 @@ class GridModule(object):
                 self.n_mset.current()
             location = Location()
 
-        mapsets = location.mapsets(self.msetstr.split("_")[0] + "_*")
+        mapsets = location.mapsets(self.mapset_prefix + "_*")
         for mset in mapsets:
             Mapset(mset).delete()
         if self.n_mset and self.n_mset.is_current():
@@ -536,6 +557,30 @@ class GridModule(object):
             inlist[inm.value] = sorted(self.mset.glist(type="raster", pattern=patt))
         self.inlist = inlist
 
+    def estimate_tile_size(self):
+        """Estimates tile width and height based on number of processes.
+
+        Keeps width and height if provided by user. If one dimension
+        is provided the other is computed as the minimum number of tiles
+        to keep all requested processes working (initially).
+        If no dimensions are provided, tiling is 1 column x N rows
+        which speeds up patching.
+        """
+        region = Region()
+        if self.width and self.height:
+            return
+        if self.width:
+            n_tiles_x = ceil(region.cols / self.width)
+            n_tiles_y = ceil(self.processes / n_tiles_x)
+            self.height = ceil(region.rows / n_tiles_y)
+        elif self.height:
+            n_tiles_y = ceil(region.rows / self.height)
+            n_tiles_x = ceil(self.processes / n_tiles_y)
+            self.width = ceil(region.cols / n_tiles_x)
+        else:
+            self.width = region.cols
+            self.height = ceil(region.rows / self.processes)
+
     def get_works(self):
         """Return a list of tuble with the parameters for cmd_exe function"""
         works = []
@@ -545,7 +590,7 @@ class GridModule(object):
         else:
             ldst, gdst = self.mset.location, self.mset.gisdbase
         cmd = self.module.get_dict()
-        groups = [g for g in select(self.module.inputs, "group")]
+        groups = list(select(self.module.inputs, "group"))
         for row, box_row in enumerate(self.bboxes):
             for col, box in enumerate(box_row):
                 inms = None
@@ -556,7 +601,7 @@ class GridModule(object):
                         indx = row * cols + col
                         inms[key] = "%s@%s" % (self.inlist[key][indx], self.mset.name)
                 # set the computational region, prepare the region parameters
-                bbox = dict([(k[0], str(v)) for k, v in box.items()[:-2]])
+                bbox = {k[0]: str(v) for k, v in box.items()[:-2]}
                 bbox["nsres"] = "%f" % reg.nsres
                 bbox["ewres"] = "%f" % reg.ewres
                 new_mset = (
@@ -578,10 +623,10 @@ class GridModule(object):
         """Add the mapset information to the input maps"""
         for inmap in self.module.inputs:
             inm = self.module.inputs[inmap]
-            if inm.type in ("raster", "vector") and inm.value:
+            if inm.type in {"raster", "vector"} and inm.value:
                 if "@" not in inm.value:
                     mset = get_mapset_raster(inm.value)
-                    inm.value = inm.value + "@%s" % mset
+                    inm.value += "@%s" % mset
 
     def run(self, patch=True, clean=True):
         """Run the GRASS command
@@ -592,8 +637,19 @@ class GridModule(object):
                       created by GridModule
         :type clean: bool
         """
+        with contextlib.ExitStack() as stack:
+            if clean:
+                stack.callback(self._clean)
+            self._actual_run(patch=patch)
+
+    def _actual_run(self, patch):
+        """Run the GRASS command
+
+        :param patch: set False if you does not want to patch the results
+        """
         self.module.flags.overwrite = True
         self.define_mapset_inputs()
+
         if self.debug:
             for wrk in self.get_works():
                 cmd_exe(wrk)
@@ -636,38 +692,48 @@ class GridModule(object):
                     fil = open(os.path.join(dirpath, self.out_prefix + par.value), "w+")
                     fil.close()
 
-        if clean:
-            self.clean_location()
-            self.rm_tiles()
-            if self.n_mset:
-                gisdbase, location = os.path.split(self.move)
-                self.clean_location(Location(location, gisdbase))
-                # rm temporary gis_rc
-                os.remove(self.gisrc_dst)
-                self.gisrc_dst = None
-                sht.rmtree(os.path.join(self.move, "PERMANENT"))
-                sht.rmtree(os.path.join(self.move, self.mset.name))
+    def _clean(self):
+        """Cleanup temporary data"""
+        self.clean_location()
+        self.rm_tiles()
+        if self.n_mset:
+            gisdbase, location = os.path.split(self.move)
+            self.clean_location(Location(location, gisdbase))
+            # rm temporary gis_rc
+            os.remove(self.gisrc_dst)
+            self.gisrc_dst = None
+            sht.rmtree(os.path.join(self.move, "PERMANENT"))
+            sht.rmtree(os.path.join(self.move, self.mset.name))
 
     def patch(self):
         """Patch the final results."""
         bboxes = split_region_tiles(width=self.width, height=self.height)
-        loc = Location()
-        mset = loc[self.mset.name]
-        mset.visible.extend(loc.mapsets())
         noutputs = 0
         for otmap in self.module.outputs:
             otm = self.module.outputs[otmap]
             if otm.typedesc == "raster" and otm.value:
-                rpatch_map(
-                    otm.value,
-                    self.mset.name,
-                    self.msetstr,
-                    bboxes,
-                    self.module.flags.overwrite,
-                    self.start_row,
-                    self.start_col,
-                    self.out_prefix,
-                )
+                if self.patch_backend == "RasterRow":
+                    rpatch_map(
+                        raster=otm.value,
+                        mapset=self.mset.name,
+                        mset_str=self.msetstr,
+                        bbox_list=bboxes,
+                        overwrite=self.module.flags.overwrite,
+                        start_row=self.start_row,
+                        start_col=self.start_col,
+                        prefix=self.out_prefix,
+                    )
+                else:
+                    rpatch_map_r_patch_backend(
+                        raster=otm.value,
+                        mset_str=self.msetstr,
+                        bbox_list=bboxes,
+                        overwrite=self.module.flags.overwrite,
+                        start_row=self.start_row,
+                        start_col=self.start_col,
+                        prefix=self.out_prefix,
+                        processes=self.processes,
+                    )
                 noutputs += 1
         if noutputs < 1:
             msg = "No raster output option defined for <{}>".format(self.module.name)

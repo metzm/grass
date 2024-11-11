@@ -15,7 +15,6 @@ This program is free software under the GNU General Public License
 """
 
 import textwrap
-import six
 
 import wx
 import wx.lib.colourselect as csel
@@ -23,7 +22,7 @@ import wx.lib.colourselect as csel
 from gui_core.gselect import ColumnSelect
 from core.units import Units
 from core.settings import UserSettings
-from gui_core.wrap import Button, CheckBox, SpinCtrl, StaticBox, StaticText
+from gui_core.wrap import Button, CheckBox, FloatSpin, SpinCtrl, StaticBox, StaticText
 
 
 class VDigitSettingsDialog(wx.Dialog):
@@ -38,7 +37,7 @@ class VDigitSettingsDialog(wx.Dialog):
         wx.Dialog.__init__(self, parent=parent, id=wx.ID_ANY, title=title, style=style)
 
         self._giface = giface
-        self.parent = parent  # MapFrame
+        self.parent = parent  # MapPanel
         self.digit = self.parent.MapWindow.digit
 
         # notebook
@@ -179,13 +178,14 @@ class VDigitSettingsDialog(wx.Dialog):
 
         # snapping
         text = StaticText(parent=panel, id=wx.ID_ANY, label=_("Snapping threshold"))
-        self.snappingValue = SpinCtrl(
+        self.snappingValue = FloatSpin(
             parent=panel,
             id=wx.ID_ANY,
             size=(75, -1),
-            initial=UserSettings.Get(group="vdigit", key="snapping", subkey="value"),
-            min=-1,
-            max=1e6,
+            value=UserSettings.Get(group="vdigit", key="snapping", subkey="value"),
+            min_val=-1,
+            max_val=1e6,
+            digits=7,
         )
         self.snappingValue.Bind(wx.EVT_SPINCTRL, self.OnChangeSnappingValue)
         self.snappingValue.Bind(wx.EVT_TEXT, self.OnChangeSnappingValue)
@@ -302,7 +302,8 @@ class VDigitSettingsDialog(wx.Dialog):
         )
         self.selectIn.SetToolTip(
             _(
-                "By default are selected all features overlapping selection bounding box "
+                "By default are selected all features overlapping selection bounding "
+                "box "
             )
         )
 
@@ -429,8 +430,14 @@ class VDigitSettingsDialog(wx.Dialog):
         self.queryLengthSL.SetSelection(
             UserSettings.Get(group="vdigit", key="queryLength", subkey="than-selection")
         )
-        self.queryLengthValue = SpinCtrl(
-            parent=panel, id=wx.ID_ANY, size=(100, -1), initial=1, min=0, max=1e6
+        self.queryLengthValue = FloatSpin(
+            parent=panel,
+            id=wx.ID_ANY,
+            size=(100, -1),
+            value=1,
+            min_val=0,
+            max_val=1e6,
+            digits=7,
         )
         self.queryLengthValue.SetValue(
             UserSettings.Get(group="vdigit", key="queryLength", subkey="thresh")
@@ -521,22 +528,19 @@ class VDigitSettingsDialog(wx.Dialog):
         settings = ((_("Layer"), 1), (_("Category"), 1), (_("Mode"), _("Next to use")))
         # layer
         text = StaticText(parent=panel, id=wx.ID_ANY, label=_("Layer"))
-        self.layer = SpinCtrl(
-            parent=panel, id=wx.ID_ANY, size=(125, -1), min=1, max=1e3
-        )
+        self.layer = SpinCtrl(parent=panel, id=wx.ID_ANY, min=1, max=1e3)
         self.layer.SetValue(
             int(UserSettings.Get(group="vdigit", key="layer", subkey="value"))
         )
         flexSizer.Add(text, proportion=0, flag=wx.ALIGN_CENTER_VERTICAL)
         flexSizer.Add(
-            self.layer, proportion=0, flag=wx.FIXED_MINSIZE | wx.ALIGN_CENTER_VERTICAL
+            self.layer, proportion=0, flag=wx.EXPAND | wx.ALIGN_CENTER_VERTICAL
         )
         # category number
         text = StaticText(parent=panel, id=wx.ID_ANY, label=_("Category number"))
         self.category = SpinCtrl(
             parent=panel,
             id=wx.ID_ANY,
-            size=(125, -1),
             initial=UserSettings.Get(group="vdigit", key="category", subkey="value"),
             min=-1e9,
             max=1e9,
@@ -550,7 +554,7 @@ class VDigitSettingsDialog(wx.Dialog):
         flexSizer.Add(
             self.category,
             proportion=0,
-            flag=wx.FIXED_MINSIZE | wx.ALIGN_CENTER_VERTICAL,
+            flag=wx.EXPAND | wx.ALIGN_CENTER_VERTICAL,
         )
         # category mode
         text = StaticText(parent=panel, id=wx.ID_ANY, label=_("Category mode"))
@@ -567,7 +571,7 @@ class VDigitSettingsDialog(wx.Dialog):
         flexSizer.Add(
             self.categoryMode,
             proportion=0,
-            flag=wx.FIXED_MINSIZE | wx.ALIGN_CENTER_VERTICAL,
+            flag=wx.EXPAND | wx.ALIGN_CENTER_VERTICAL,
         )
 
         sizer.Add(flexSizer, proportion=1, flag=wx.ALL | wx.EXPAND, border=1)
@@ -618,17 +622,15 @@ class VDigitSettingsDialog(wx.Dialog):
         layer = UserSettings.Get(group="vdigit", key="layer", subkey="value")
         mapLayer = self.parent.toolbars["vdigit"].GetLayer()
         tree = self.parent.tree
-        if tree:
-            item = tree.FindItemByData("maplayer", mapLayer)
-        else:
-            item = None
+        item = tree.FindItemByData("maplayer", mapLayer) if tree else None
         row = 0
         for attrb in ["length", "area", "perimeter"]:
             # checkbox
             check = CheckBox(
                 parent=panel, id=wx.ID_ANY, label=self.geomAttrb[attrb]["label"]
             )
-            # self.deleteRecord.SetValue(UserSettings.Get(group='vdigit', key="delRecord", subkey='enabled'))
+            # self.deleteRecord.SetValue(UserSettings.Get(
+            # group='vdigit', key="delRecord", subkey='enabled'))
             check.Bind(wx.EVT_CHECKBOX, self.OnGeomAttrb)
             # column (only numeric)
             column = ColumnSelect(parent=panel, size=(200, -1))
@@ -659,10 +661,7 @@ class VDigitSettingsDialog(wx.Dialog):
                 column.SetStringSelection(
                     tree.GetLayerInfo(item, key="vdigit")["geomAttr"][attrb]["column"]
                 )
-                if attrb == "area":
-                    type = "area"
-                else:
-                    type = "length"
+                type = "area" if attrb == "area" else "length"
                 unitsIdx = Units.GetUnitsIndex(
                     type,
                     tree.GetLayerInfo(item, key="vdigit")["geomAttr"][attrb]["units"],
@@ -748,7 +747,7 @@ class VDigitSettingsDialog(wx.Dialog):
         checked = event.IsChecked()
         id = event.GetId()
         key = None
-        for attrb, val in six.iteritems(self.geomAttrb):
+        for attrb, val in self.geomAttrb.items():
             if val["check"] == id:
                 key = attrb
                 break
@@ -792,8 +791,6 @@ class VDigitSettingsDialog(wx.Dialog):
 
     def OnChangeAddRecord(self, event):
         """Checkbox 'Add new record' status changed"""
-        pass
-        # self.category.SetValue(self.digit.SetCategory())
 
     def OnChangeSnappingValue(self, event):
         """Change snapping value - update static text"""
@@ -803,11 +800,10 @@ class VDigitSettingsDialog(wx.Dialog):
             region = self.parent.MapWindow.Map.GetRegion()
             res = (region["nsres"] + region["ewres"]) / 2.0
             threshold = self.digit.GetDisplay().GetThreshold(value=res)
+        elif self.snappingUnit.GetSelection() == 1:  # map units
+            threshold = value
         else:
-            if self.snappingUnit.GetSelection() == 1:  # map units
-                threshold = value
-            else:
-                threshold = self.digit.GetDisplay().GetThreshold(value=value)
+            threshold = self.digit.GetDisplay().GetThreshold(value=value)
 
         if value == 0:
             self.snappingInfo.SetLabel(_("Snapping disabled"))
@@ -899,7 +895,7 @@ class VDigitSettingsDialog(wx.Dialog):
         """
         self._giface.workspaceChanged.emit()
         # symbology
-        for key, (enabled, color) in six.iteritems(self.symbology):
+        for key, (enabled, color) in self.symbology.items():
             if enabled:
                 UserSettings.Set(
                     group="vdigit",
@@ -933,7 +929,7 @@ class VDigitSettingsDialog(wx.Dialog):
             group="vdigit",
             key="snapping",
             subkey="value",
-            value=int(self.snappingValue.GetValue()),
+            value=self.snappingValue.GetValue(),
         )
         UserSettings.Set(
             group="vdigit",
@@ -985,34 +981,27 @@ class VDigitSettingsDialog(wx.Dialog):
         # geometry attributes (workspace)
         mapLayer = self.parent.toolbars["vdigit"].GetLayer()
         tree = self._giface.GetLayerTree()
-        if tree:
-            item = tree.FindItemByData("maplayer", mapLayer)
-        else:
-            item = None
-        for key, val in six.iteritems(self.geomAttrb):
+        item = tree.FindItemByData("maplayer", mapLayer) if tree else None
+        for key, val in self.geomAttrb.items():
             checked = self.FindWindowById(val["check"]).IsChecked()
             column = self.FindWindowById(val["column"]).GetValue()
             unitsIdx = self.FindWindowById(val["units"]).GetSelection()
             if item and not tree.GetLayerInfo(item, key="vdigit"):
-                tree.SetLayerInfo(item, key="vdigit", value={"geomAttr": dict()})
+                tree.SetLayerInfo(item, key="vdigit", value={"geomAttr": {}})
 
             if checked:  # enable
-                if key == "area":
-                    type = key
-                else:
-                    type = "length"
-                unitsKey = Units.GetUnitsKey(type, unitsIdx)
+                _type = key if key == "area" else "length"
+                unitsKey = Units.GetUnitsKey(_type, unitsIdx)
                 tree.GetLayerInfo(item, key="vdigit")["geomAttr"][key] = {
                     "column": column,
                     "units": unitsKey,
                 }
-            else:
-                if (
-                    item
-                    and tree.GetLayerInfo(item, key="vdigit")
-                    and key in tree.GetLayerInfo(item, key="vdigit")["geomAttr"]
-                ):
-                    del tree.GetLayerInfo(item, key="vdigit")["geomAttr"][key]
+            elif (
+                item
+                and tree.GetLayerInfo(item, key="vdigit")
+                and key in tree.GetLayerInfo(item, key="vdigit")["geomAttr"]
+            ):
+                del tree.GetLayerInfo(item, key="vdigit")["geomAttr"][key]
 
         # query tool
         if self.queryLength.GetValue():
@@ -1032,7 +1021,7 @@ class VDigitSettingsDialog(wx.Dialog):
             group="vdigit",
             key="queryLength",
             subkey="thresh",
-            value=int(self.queryLengthValue.GetValue()),
+            value=self.queryLengthValue.GetValue(),
         )
         UserSettings.Set(
             group="vdigit",
@@ -1101,5 +1090,4 @@ class VDigitSettingsDialog(wx.Dialog):
         self.digit.UpdateSettings()
 
         # redraw map if auto-rendering is enabled
-        if self.parent.IsAutoRendered():
-            self.parent.OnRender(None)
+        self.parent.OnRender(None)

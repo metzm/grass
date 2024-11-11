@@ -18,9 +18,10 @@
 
 
 import os
-import unittest
 import sys
+import unittest
 from pathlib import Path
+
 import grass.jupyter as gj
 from grass.gunittest.case import TestCase
 from grass.gunittest.main import test
@@ -29,7 +30,17 @@ from grass.gunittest.main import test
 def can_import_folium():
     """Test folium import to see if test can be run."""
     try:
-        import folium
+        import folium  # noqa
+
+        return True
+    except ImportError:
+        return False
+
+
+def can_import_ipyleaflet():
+    """Test ipyleaflet import to see if test can be run."""
+    try:
+        import ipyleaflet  # noqa
 
         return True
     except ImportError:
@@ -86,6 +97,32 @@ class TestDisplay(TestCase):
         self.files.append(filename)
         interactive_map.save(filename)
         self.assertFileExists(filename)
+
+    @unittest.skipIf(not can_import_ipyleaflet(), "Cannot import ipyleaflet")
+    def test_query_button(self):
+        # Create InteractiveMap with ipyleaflet backend
+        interactive_map = gj.InteractiveMap(map_backend="ipyleaflet")
+        interactive_map.add_raster("elevation")
+        button = interactive_map.setup_query_interface()
+        self.assertIsNotNone(interactive_map._controllers[button].query_raster((0, 0)))
+
+    @unittest.skipIf(not can_import_ipyleaflet(), "Cannot import ipyleaflet")
+    def test_draw(self):
+        """Test the draw_computational_region method."""
+        # Create InteractiveMap
+        interactive_map = gj.InteractiveMap(map_backend="ipyleaflet")
+        button = interactive_map.setup_drawing_interface()
+        interactive_map._controllers[button].activate()
+        self.assertIsNotNone(interactive_map._controllers[button].save_button_control)
+
+    @unittest.skipIf(not can_import_ipyleaflet(), "Cannot import ipyleaflet")
+    def test_draw_computational_region(self):
+        """Test the draw_computational_region method."""
+        # Create InteractiveMap
+        interactive_map = gj.InteractiveMap(map_backend="ipyleaflet")
+        button = interactive_map.setup_computational_region_interface()
+        interactive_map._controllers[button].activate()
+        self.assertIsNotNone(interactive_map._controllers[button].save_button_control)
 
 
 if __name__ == "__main__":

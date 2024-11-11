@@ -11,11 +11,7 @@ Classes:
 
 This program is free software under the GNU General Public License
 (>=v2). Read the file COPYING that comes with GRASS for details.
-
-@author Vaclav Petras <wenzeslaus gmail.com> (statusbar refactoring)
-@author Anna Kratochvilova <kratochanna gmail.com> (statusbar refactoring)
 """
-
 
 import wx
 
@@ -34,7 +30,7 @@ class SbGoToGCP(SbItem):
     def __init__(self, mapframe, statusbar, position=0):
         SbItem.__init__(self, mapframe, statusbar, position)
         self.name = "gotoGCP"
-        self.label = _("Go to GCP No.")
+        self.label = _("Pan to GCP by number")
 
         self.widget = SpinCtrl(parent=self.statusbar, id=wx.ID_ANY, value="", min=0)
         self.widget.Hide()
@@ -98,8 +94,7 @@ class SbGoToGCP(SbItem):
         and sets the spin limits accordingly."""
         self.statusbar.SetStatusText("")
         maximum = self.mapFrame.GetListCtrl().GetItemCount()
-        if maximum < 1:
-            maximum = 1
+        maximum = max(maximum, 1)
         self.widget.SetRange(0, maximum)
         self.Show()
 

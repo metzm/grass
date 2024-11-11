@@ -3,7 +3,7 @@
 <em>v.external</em> creates new vector map as a link to external OGR
 layer or PostGIS feature table. OGR (Simple Features Library) is part
 of the
-<a href="http://www.gdal.org">GDAL</a> library, so you need to install
+<a href="https://gdal.org">GDAL</a> library, so you need to install
 GDAL to use <em>v.external</em> for external OGR layers. Note that a
 PostGIS feature table can be linked also using built-in <em>GRASS-PostGIS
 data driver</em> (requires GRASS to be built with PostgreSQL support).
@@ -57,7 +57,7 @@ Assuming that 'test_shape.shp' is located in directory
 '/home/user/shape_data'.
 
 <div class="code"><pre>
-v.external input=/home/user/shape_data layer=test_shape output=grass_map 
+v.external input=/home/user/shape_data layer=test_shape output=grass_map
 </pre></div>
 
 <h3>PostGIS layers</h3>
@@ -116,7 +116,7 @@ example below only one feature (in this case a vector tile) will be
 linked as a new GRASS vector map.
 
 <div class="code"><pre>
-v.external in="PG:dbname=tiles" layer=wrs2_descending where="pr=191026" 
+v.external in="PG:dbname=tiles" layer=wrs2_descending where="pr=191026"
 ...
 Number of areas: 1
 ...
@@ -140,7 +140,7 @@ API</a> documentation
 </em>
 
 <p>
-<a href="http://www.gdal.org/">GDAL Library</a>
+<a href="https://gdal.org/">GDAL Library</a>
 <br>
 <a href="http://postgis.org/">PostGIS</a>
 
@@ -154,8 +154,3 @@ Radim Blazek, ITC-Irst, Trento, Italy
 <br>
 PostGIS support by Martin Landa, GeoForAll (OSGeoREL) Lab, Czech
 Technical University in Prague, Czech Republic
-
-<!--
-<p>
-<i>Last changed: $Date$</i>
--->

@@ -1,28 +1,28 @@
-| :exclamation:  Instructions below are not up-to-date. Update in progress. |
-|---------------------------------------------------------------------------|
-
 # GRASS GIS Mac OS X Build
 
 (and other Mac notes)
 
 ## Table of Contents
 
+| :exclamation:  Instructions below are not up-to-date. Update in progress. |
+|---------------------------------------------------------------------------|
+
 - Quickstart
 - About
 - Building GRASS
-    - Optimization
-    - Configure Example
-    - Leopard Notes
-    - Building an Installer Package
-    - Bundling Libraries and Programs
+  - Optimization
+  - Configure Example
+  - Leopard Notes
+  - Building an Installer Package
+  - Bundling Libraries and Programs
 - Developer Notes
 - Help Files
 - Addon Modules
 - Dependency Build Notes
-    - Universal Aqua Tcl/Tk
-    - Universal GPSBabel
-    - Universal NetPBM
-    - Universal FFMPEG
+  - Universal Aqua Tcl/Tk
+  - Universal GPSBabel
+  - Universal NetPBM
+  - Universal FFMPEG
 
 ## Quickstart
 
@@ -44,7 +44,7 @@ init.sh.
 ## Building GRASS
 
 Building GRASS as a Mac OS X application is pretty much the same as for
-a unix build (see the [INSTALL](../INSTALL) document for details). For an
+a unix build (see the [INSTALL.md](../INSTALL.md) document for details). For an
 application, just add this option to configure:
 
 `--enable-macosx-app`
@@ -170,8 +170,13 @@ As an example, to build GRASS using my frameworks and Tcl/Tk as built in
 the build notes below, this should work *(for a standard unix build,
 just remove the `--prefix` and `--enable-macosx-app` flags)*:
 
-```sh
+```bash
 ./configure \
+    --enable-macosx-app \
+    --prefix=/Applications \
+    --with-cxx \
+    --with-fftw-includes=/Library/Frameworks/FFTW3.framework/unix/include \
+    --with-fftw-libs=/Library/Frameworks/FFTW3.framework/unix/lib \
     --with-freetype \
     --with-freetype-includes= \
         "/Library/Frameworks/FreeType.framework/unix/include/freetype2 \
@@ -179,36 +184,31 @@ just remove the `--prefix` and `--enable-macosx-app` flags)*:
     --with-freetype-libs=/Library/Frameworks/FreeType.framework/unix/lib \
     --with-gdal=/Library/Frameworks/GDAL.framework/Programs/gdal-config \
     --with-geos=/Library/Frameworks/GEOS.framework/Programs/geos-config \
+    --with-jpeg-includes=/Library/Frameworks/UnixImageIO.framework/unix/include \
+    --with-jpeg-libs=/Library/Frameworks/UnixImageIO.framework/unix/lib \
+    --with-odbc \
+    --with-opengl=aqua \
+    --with-png-includes=/Library/Frameworks/UnixImageIO.framework/unix/include \
+    --with-png-libs=/Library/Frameworks/UnixImageIO.framework/unix/lib \
     --with-proj \
     --with-proj-includes=/Library/Frameworks/PROJ.framework/unix/include \
     --with-proj-libs=/Library/Frameworks/PROJ.framework/unix/lib \
     --with-proj-share=/Library/Frameworks/PROJ.framework/Resources/proj \
-    --with-jpeg-includes=/Library/Frameworks/UnixImageIO.framework/unix/include \
-    --with-jpeg-libs=/Library/Frameworks/UnixImageIO.framework/unix/lib \
-    --with-png-includes=/Library/Frameworks/UnixImageIO.framework/unix/include \
-    --with-png-libs=/Library/Frameworks/UnixImageIO.framework/unix/lib \
-    --with-tiff-includes=/Library/Frameworks/UnixImageIO.framework/unix/include \
-    --with-tiff-libs=/Library/Frameworks/UnixImageIO.framework/unix/lib \
-    --without-postgres \
-    --without-mysql \
-    --with-odbc \
     --with-sqlite \
-    --with-sqlite-libs=/Library/Frameworks/SQLite3.framework/unix/lib \
     --with-sqlite-includes=/Library/Frameworks/SQLite3.framework/unix/include \
-    --with-fftw-includes=/Library/Frameworks/FFTW3.framework/unix/include \
-    --with-fftw-libs=/Library/Frameworks/FFTW3.framework/unix/lib \
-    --with-cxx \
+    --with-sqlite-libs=/Library/Frameworks/SQLite3.framework/unix/lib \
     --with-tcltk-includes="/Library/Frameworks/Tcl.framework/Headers \
             /Library/Frameworks/Tk.framework/Headers \
             /Library/Frameworks/Tk.framework/PrivateHeaders" \
     --with-tcltk-libs=/usr/local/lib \
+    --with-tiff-includes=/Library/Frameworks/UnixImageIO.framework/unix/include \
+    --with-tiff-libs=/Library/Frameworks/UnixImageIO.framework/unix/lib \
     --with-x \
-    --without-motif \
     --without-glw \
-    --with-opengl=aqua \
-    --without-readline \
-    --prefix=/Applications \
-    --enable-macosx-app
+    --without-motif \
+    --without-mysql \
+    --without-postgres \
+    --without-readline
 ```
 
 That's a long line, but you have to be very explicit in the GRASS configure
@@ -230,10 +230,10 @@ build)*:
 
 To install the new Python GUI (see [REQUIREMENTS.html](../REQUIREMENTS.html)
 and [gui/wxpython/README](../gui/wxpython/README), wxpython installer
-available at [wxpython.org](http://wxpython.org/)), add this to configure (fill
+available at [wxpython.org](https://wxpython.org/)), add this to configure (fill
 in the correct version at x.x.x.x for the wxpython you have installed):
 
-```
+```bash
 --with-python
 --with-wxwidgets=/usr/local/lib/wxPython-unicode-x.x.x.x/bin/wx-config
 ```
@@ -243,7 +243,7 @@ system Python on Leopard.
 
 If you want ffmpeg support (see build instructions below), add this:
 
-```sh
+```bash
 --with-ffmpeg \
 --with-ffmpeg-includes="/usr/local/include \
     /usr/local/include/libavcodec /usr/local/include/libavdevice \
@@ -252,10 +252,12 @@ If you want ffmpeg support (see build instructions below), add this:
 --with-ffmpeg-libs=/usr/local/lib
 ```
 
-For cairo support (see build instructions at
-[kyngchaos.com](https://web.archive.org/web/20161112052733/http://www.kyngchaos.com/macosx/build/cairo/)), add this:
+For cairo support (see build
+instructions at
+[kyngchaos.com](https://web.archive.org/web/20161112052733/http://www.kyngchaos.com/macosx/build/cairo/)),
+add this:
 
-```sh
+```bash
 --with-cairo \
 --with-cairo-includes=/usr/local/include/cairo \
 --with-cairo-libs=/usr/local/lib \
@@ -390,7 +392,7 @@ folder in a Terminal and:
 
 `Platform [darwin] ==>` ↵
 
-`Netpbm shared library directory [default] ==> `**`/usr/local`**
+`Netpbm shared library directory [default] ==>` **`/usr/local`**
 
 choose where you will install it
 default is NOT /usr/local or any location at all, so you MUST set this
@@ -434,7 +436,8 @@ could use static, since GRASS only needs a few of the progs
 ignore warning about libz
 
 ```sh
-echo "JASPERLIB = /Library/Frameworks/UnixImageIO.framework/unix/lib/libjasper.dylib"  \
+echo "JASPERLIB = \
+    /Library/Frameworks/UnixImageIO.framework/unix/lib/libjasper.dylib"  \
     >> Makefile.config
 echo "JASPERHDR_DIR = /Library/Frameworks/UnixImageIO.framework/Headers" \
     >> Makefile.config
@@ -443,7 +446,8 @@ echo "JASPERHDR_DIR = /Library/Frameworks/UnixImageIO.framework/Headers" \
 For Tiger:
 
 ```sh
-echo "CC = /usr/bin/gcc -arch ppc -arch i386 -isysroot /Developer/SDKs/MacOSX10.4u.sdk" \
+echo "CC = /usr/bin/gcc -arch ppc -arch i386 \
+    -isysroot /Developer/SDKs/MacOSX10.4u.sdk" \
     >> Makefile.config
 ```
 
@@ -529,10 +533,21 @@ For i386:
 
 ```sh
 cd build-i386
-../configure --enable-shared --disable-static --disable-debug \
-    --disable-ffserver --disable-network --enable-gpl --enable-pthreads \
-    --enable-swscale --disable-vhook --disable-ffplay --disable-ffmpeg \
-    --disable-amd3dnow --arch=i386 --extra-cflags="-arch i386" \
+../configure \
+    --arch=i386 \
+    --disable-amd3dnow \
+    --disable-debug \
+    --disable-ffmpeg \
+    --disable-ffplay \
+    --disable-ffserver \
+    --disable-network \
+    --disable-static \
+    --disable-vhook \
+    --enable-gpl \
+    --enable-pthreads \
+    --enable-shared \
+    --enable-swscale \
+    --extra-cflags="-arch i386" \
     --extra-ldflags="-arch i386"
 ```
 
@@ -551,13 +566,25 @@ Now, the PPC build:
 
 ```sh
 cd ../build-ppc
-../configure --enable-shared --disable-static --disable-debug \
-    --disable-ffserver --disable-network --enable-gpl --enable-pthreads \
-    --enable-swscale --disable-vhook --disable-ffplay --disable-ffmpeg \
-    --enable-altivec --arch=ppc --extra-cflags="-arch ppc" \
+../configure \
+    --arch=ppc \
+    --disable-debug \
+    --disable-ffmpeg \
+    --disable-ffplay \
+    --disable-ffserver \
+    --disable-network \
+    --disable-static \
+    --disable-vhook \
+    --enable-altivec \
+    --enable-gpl \
+    --enable-pthreads \
+    --enable-shared \
+    --enable-swscale \
+    --extra-cflags="-arch ppc" \
     --extra-ldflags="-arch ppc"
 make
 ```
+
 Don't install this one, there is no need.
 
 If you are building for Leopard, also do the 64bit varieties, otherwise
@@ -565,13 +592,23 @@ skip to the lipo step below.
 
 For x86_64:
 
-
 ```sh
 cd build-x86_64
-../configure --enable-shared --disable-static --disable-debug \
-    --disable-ffserver --disable-network --enable-gpl --enable-pthreads \
-    --enable-swscale --disable-vhook --disable-ffplay --disable-ffmpeg \
-    --disable-amd3dnow --arch=x86_64 --extra-cflags="-arch x86\_64" \
+../configure \
+    --arch=x86_64 \
+    --disable-amd3dnow \
+    --disable-debug \
+    --disable-ffmpeg \
+    --disable-ffplay \
+    --disable-ffserver \
+    --disable-network \
+    --disable-static \
+    --disable-vhook \
+    --enable-gpl \
+    --enable-pthreads \
+    --enable-shared \
+    --enable-swscale \
+    --extra-cflags="-arch x86\_64" \
     --extra-ldflags="-arch x86_64"
 ```
 
@@ -584,10 +621,21 @@ And ppc64:
 
 ```sh
 cd ../build-ppc64
-../configure --enable-shared --disable-static --disable-debug \
-    --disable-ffserver --disable-network --enable-gpl --enable-pthreads \
-    --enable-swscale --disable-vhook --disable-ffplay --disable-ffmpeg \
-    --enable-altivec --arch=ppc64 --extra-cflags="-arch ppc64" \
+../configure \
+    --arch=ppc64 \
+    --disable-debug \
+    --disable-ffmpeg \
+    --disable-ffplay \
+    --disable-ffserver \
+    --disable-network \
+    --disable-static \
+    --disable-vhook \
+    --enable-altivec \
+    --enable-gpl \
+    --enable-pthreads \
+    --enable-shared \
+    --enable-swscale \
+    --extra-cflags="-arch ppc64" \
     --extra-ldflags="-arch ppc64"
 ```
 
@@ -650,6 +698,6 @@ This program is free software under the GNU General Public License (>=v2).
 
 \- William Kyngesburye
 
-kyngchaos@kyngchaos.com
+<kyngchaos@kyngchaos.com>
 
-http://www.kyngchaos.com/
+<http://www.kyngchaos.com/>

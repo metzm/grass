@@ -19,9 +19,11 @@ for details.
 import wx
 import os
 
+from pathlib import Path
+
 from core.debug import Debug
 from datacatalog.tree import DataCatalogTree
-from datacatalog.toolbars import DataCatalogToolbar
+from datacatalog.toolbars import DataCatalogToolbar, DataCatalogSearch
 from gui_core.infobar import InfoBar
 from datacatalog.infomanager import DataCatalogInfoManager
 from gui_core.wrap import Menu
@@ -66,6 +68,9 @@ class DataCatalog(wx.Panel):
         # toolbar
         self.toolbar = DataCatalogToolbar(parent=self)
 
+        # search
+        self.search = DataCatalogSearch(parent=self, filter_function=self.Filter)
+
         # tree with layers
         self.tree = DataCatalogTree(self, giface=giface)
         self.tree.showNotification.connect(self.showNotification)
@@ -95,7 +100,7 @@ class DataCatalog(wx.Panel):
             # get reason why last used mapset is not usable
             last_mapset_path = gisenv()["LAST_MAPSET_PATH"]
             self.reason_id = get_reason_id_mapset_not_usable(last_mapset_path)
-            if self.reason_id in ("non-existent", "invalid", "different-owner"):
+            if self.reason_id in {"non-existent", "invalid", "different-owner"}:
                 # show non-standard situation info
                 wx.CallLater(delay, self.showFallbackSessionInfo)
             elif self.reason_id == "locked":
@@ -106,6 +111,12 @@ class DataCatalog(wx.Panel):
         """Do layout"""
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(self.toolbar, proportion=0, flag=wx.EXPAND)
+        sizer.Add(
+            self.search,
+            proportion=0,
+            flag=wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND,
+            border=5,
+        )
         sizer.Add(self.infoBar, proportion=0, flag=wx.EXPAND)
         sizer.Add(self.tree.GetControl(), proportion=1, flag=wx.EXPAND)
 
@@ -191,7 +202,10 @@ class DataCatalog(wx.Panel):
     def OnAddGrassDB(self, event):
         """Add grass database"""
         dlg = wx.DirDialog(
-            self, _("Choose GRASS data directory:"), os.getcwd(), wx.DD_DEFAULT_STYLE
+            self,
+            _("Choose GRASS data directory:"),
+            str(Path.cwd()),
+            wx.DD_DEFAULT_STYLE,
         )
         if dlg.ShowModal() == wx.ID_OK:
             grassdatabase = dlg.GetPath()
@@ -199,11 +213,13 @@ class DataCatalog(wx.Panel):
 
             # Offer to create a new location
             if grassdb_node and not os.listdir(grassdatabase):
-                message = _("Do you want to create a location?")
+                message = _(
+                    "Do you want to create a new project (also known as location)?"
+                )
                 dlg2 = wx.MessageDialog(
                     self,
                     message=message,
-                    caption=_("Create location?"),
+                    caption=_("Create project?"),
                     style=wx.YES_NO | wx.YES_DEFAULT | wx.ICON_QUESTION,
                 )
                 if dlg2.ShowModal() == wx.ID_YES:

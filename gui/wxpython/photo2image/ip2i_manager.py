@@ -7,7 +7,8 @@ and click GCP creation
 
 Classes:
  - ip2i_manager::GCPWizard
- - ip2i_manager::GCP
+ - ip2i_manager::GCPPanel
+ - ip2i_manager::GCPDisplay
  - ip2i_manager::GCPList
  - ip2i_manager::EditGCP
  - ip2i_manager::GrSettingsDialog
@@ -21,14 +22,12 @@ This program is free software under the GNU General Public License
 @author Original version improved by Martin Landa <landa.martin gmail.com>
 @author Rewritten by Markus Metz redesign georectfier -> GCP Manage
 @author Support for GraphicsSet added by Stepan Turek <stepan.turek seznam.cz> (2012)
-@author Yann modified: graphical replacement of i.photo.2image (was in v6 using Vask lib)
+@author Yann modified: graphical replacement of i.photo.2image
+        (was in v6 using Vask lib)
 """
-
-from __future__ import print_function
 
 import os
 import sys
-import six
 import shutil
 from copy import copy
 
@@ -36,14 +35,15 @@ import wx
 from wx.lib.mixins.listctrl import ColumnSorterMixin, ListCtrlAutoWidthMixin
 import wx.lib.colourselect as csel
 
-import grass.script as grass
+import grass.script as gs
 
 from core import utils, globalvar
 from core.render import Map
 from gui_core.gselect import Select
+from gui_core.mapdisp import FrameMixin
 from core.gcmd import RunCommand, GMessage, GError, GWarning
 from core.settings import UserSettings
-from photo2image.ip2i_mapdisplay import MapFrame
+from photo2image.ip2i_mapdisplay import MapPanel
 from gui_core.wrap import (
     SpinCtrl,
     Button,
@@ -59,9 +59,7 @@ from gui_core.wrap import (
 #
 # global variables
 #
-global src_map
-global tgt_map
-global maptype
+global src_map, tgt_map, maptype
 
 src_map = ""
 tgt_map = ""
@@ -87,7 +85,7 @@ def getSmallDnArrowImage():
     return img
 
 
-class GCPWizard(object):
+class GCPWizard:
     """
     Not a wizard anymore
     """
@@ -95,9 +93,7 @@ class GCPWizard(object):
     def __init__(
         self, parent, giface, group, raster, raster1, camera, order, extension
     ):
-        global maptype
-        global src_map
-        global tgt_map
+        global maptype, src_map, tgt_map
         maptype = "raster"
         rendertype = "raster"
         self.parent = parent  # GMFrame
@@ -113,7 +109,7 @@ class GCPWizard(object):
         #
         # get environmental variables
         #
-        self.grassdatabase = grass.gisenv()["GISDBASE"]
+        self.grassdatabase = gs.gisenv()["GISDBASE"]
 
         #
         # read original environment settings
@@ -122,8 +118,8 @@ class GCPWizard(object):
         self.source_gisrc = os.environ["GISRC"]
         self.gisrc_dict = {}
         try:
-            f = open(self.target_gisrc, "r")
-            for line in f.readlines():
+            f = open(self.target_gisrc)
+            for line in f:
                 line = line.replace("\n", "").strip()
                 if len(line) < 1:
                     continue
@@ -167,7 +163,7 @@ class GCPWizard(object):
             if p.returncode == 0:
                 print("returncode = ", str(p.returncode))
                 self.Map.region = self.Map.GetRegion()
-        except:
+        except Exception:
             pass
 
         self.SwitchEnv("source")
@@ -202,23 +198,32 @@ class GCPWizard(object):
         #
         # start GCP Manager
         #
-        self.gcpmgr = GCP(
-            self.parent,
+        # create superior Map Display frame
+        mapframe = wx.Frame(
+            parent=None,
+            id=wx.ID_ANY,
+            size=globalvar.MAP_WINDOW_SIZE,
+            style=wx.DEFAULT_FRAME_STYLE,
+            title=name,
+        )
+        gcpmgr = GCPDisplay(
+            parent=mapframe,
             giface=self._giface,
             grwiz=self,
-            size=globalvar.MAP_WINDOW_SIZE,
-            toolbars=["gcpdisp"],
+            id=wx.ID_ANY,
             Map=self.SrcMap,
             lmgr=self.parent,
+            title=name,
             camera=camera,
         )
 
         # load GCPs
-        self.gcpmgr.InitMapDisplay()
-        self.gcpmgr.CenterOnScreen()
-        self.gcpmgr.Show()
+        gcpmgr.InitMapDisplay()
+        gcpmgr.CenterOnScreen()
+        gcpmgr.Show()
         # need to update AUI here for wingrass
-        self.gcpmgr._mgr.Update()
+        gcpmgr._mgr.Update()
+
         self.SwitchEnv("target")
 
     def SetSrcEnv(self, location, mapset):
@@ -284,7 +289,7 @@ class GCPWizard(object):
         event.Skip()
 
 
-class GCP(MapFrame, ColumnSorterMixin):
+class GCPPanel(MapPanel, ColumnSorterMixin):
     """
     Manages ground control points for georectifying. Calculates RMS statistics.
     Calls i.rectify or v.rectify to georectify map.
@@ -303,7 +308,6 @@ class GCP(MapFrame, ColumnSorterMixin):
         lmgr=None,
         camera=None,
     ):
-
         self.grwiz = grwiz  # GR Wizard
         self._giface = giface
 
@@ -314,8 +318,7 @@ class GCP(MapFrame, ColumnSorterMixin):
 
         self.camera = camera
 
-        # wx.Frame.__init__(self, parent, id, title, size = size, name = "GCPFrame")
-        MapFrame.__init__(
+        MapPanel.__init__(
             self,
             parent=parent,
             giface=self._giface,
@@ -426,7 +429,7 @@ class GCP(MapFrame, ColumnSorterMixin):
         import re
 
         try:
-            fc = open(self.file["camera"], mode="r")
+            fc = open(self.file["camera"])
             fc_count = 0
             for line in fc:
                 fc_count += 1
@@ -435,7 +438,7 @@ class GCP(MapFrame, ColumnSorterMixin):
                     numberOfFiducial = int(line.split()[-1])
             dataFiducialX = []
             dataFiducialY = []
-            fc = open(self.file["camera"], mode="r")
+            fc = open(self.file["camera"])
             fc_count = 0
             for line in fc:
                 fc_count += 1
@@ -443,7 +446,7 @@ class GCP(MapFrame, ColumnSorterMixin):
                     dataFiducialX.append(line.split()[1])
                     dataFiducialY.append(line.split()[2])
 
-        except IOError as err:
+        except OSError as err:
             GError(
                 parent=self,
                 message="%s <%s>. %s%s"
@@ -467,7 +470,7 @@ class GCP(MapFrame, ColumnSorterMixin):
             f.write("#\tsource\t\ttarget\t\tstatus\n")
             f.write("#\teast\tnorth\teast\tnorth\t(1=ok, 0=ignore)\n")
             f.write(
-                "#-----------------------     -----------------------     ---------------\n"
+                "#-----------------------     -----------------------     ---------------\n"  # noqa: E501
             )
 
             check = "0"
@@ -489,7 +492,7 @@ class GCP(MapFrame, ColumnSorterMixin):
                     + "\n"
                 )
 
-        except IOError as err:
+        except OSError as err:
             GError(
                 parent=self,
                 message="%s <%s>. %s%s"
@@ -586,7 +589,6 @@ class GCP(MapFrame, ColumnSorterMixin):
         self.Bind(wx.EVT_ACTIVATE, self.OnFocus)
         self.Bind(wx.EVT_SIZE, self.OnSize)
         self.Bind(wx.EVT_IDLE, self.OnIdle)
-        self.Bind(wx.EVT_CLOSE, self.OnQuit)
 
         self.SetSettings()
 
@@ -594,7 +596,6 @@ class GCP(MapFrame, ColumnSorterMixin):
         """Disable GCP manager mode"""
         # leaving the method here but was used only to delete gcpmanagement
         # from layer manager which is now not needed
-        pass
 
     def CreateGCPList(self):
         """Create GCP List Control"""
@@ -624,7 +625,7 @@ class GCP(MapFrame, ColumnSorterMixin):
         # initialize column sorter
         self.itemDataMap = self.mapcoordlist
         ncols = self.list.GetColumnCount()
-        ColumnSorterMixin.__init__(self, ncols)
+        ColumnSorterMixin.__init__(self, ncols)  # noqa: PLC2801, C2801
         # init to ascending sort on first click
         self._colSortFlag = [1] * ncols
 
@@ -669,7 +670,7 @@ class GCP(MapFrame, ColumnSorterMixin):
             ]
         )  # backward error
 
-        if self.statusbarManager.GetMode() == 8:  # go to
+        if self.statusbarManager.GetMode() == 5:  # go to
             self.StatusbarUpdate()
 
     def DeleteGCP(self, event):
@@ -713,7 +714,7 @@ class GCP(MapFrame, ColumnSorterMixin):
 
         self.UpdateColours()
 
-        if self.statusbarManager.GetMode() == 8:  # go to
+        if self.statusbarManager.GetMode() == 5:  # go to
             self.StatusbarUpdate()
             if self.list.selectedkey > 0:
                 self.statusbarManager.SetProperty("gotoGCP", self.list.selectedkey)
@@ -752,7 +753,7 @@ class GCP(MapFrame, ColumnSorterMixin):
         }
         wpx = UserSettings.Get(group="gcpman", key="symbol", subkey="width")
 
-        for k, v in six.iteritems(colours):
+        for k, v in colours.items():
             col = UserSettings.Get(group="gcpman", key="symbol", subkey=k)
             self.pointsToDrawSrc.GetPen(v).SetColour(
                 wx.Colour(col[0], col[1], col[2], 255)
@@ -779,7 +780,7 @@ class GCP(MapFrame, ColumnSorterMixin):
 
     def SetGCPSatus(self, item, itemIndex):
         """Before GCP is drawn, decides it's colour and whether it
-        will be drawed.
+        will be drawn.
         """
         key = self.list.GetItemData(itemIndex)
         # incremented because of itemDataMap (has one more item) - will be
@@ -796,11 +797,8 @@ class GCP(MapFrame, ColumnSorterMixin):
         else:
             item.SetPropertyVal("hide", False)
             if self.highest_only:
-                if itemIndex == self.highest_key:
-                    wxPen = "highest"
-                else:
-                    wxPen = "default"
-            else:
+                wxPen = "highest" if itemIndex == self.highest_key else "default"
+            else:  # noqa: PLR5501
                 if self.mapcoordlist[key][5] > self.rmsthresh:
                     wxPen = "highest"
                 else:
@@ -889,7 +887,7 @@ class GCP(MapFrame, ColumnSorterMixin):
             f.write("#\tsource\t\ttarget\t\tstatus\n")
             f.write("#\teast\tnorth\teast\tnorth\t(1=ok, 0=ignore)\n")
             f.write(
-                "#-----------------------     -----------------------     ---------------\n"
+                "#-----------------------     -----------------------     ---------------\n"  # noqa: E501
             )
 
             for index in range(self.list.GetItemCount()):
@@ -915,7 +913,7 @@ class GCP(MapFrame, ColumnSorterMixin):
                     + "\n"
                 )
 
-        except IOError as err:
+        except OSError as err:
             GError(
                 parent=self,
                 message="%s <%s>. %s%s"
@@ -954,10 +952,10 @@ class GCP(MapFrame, ColumnSorterMixin):
             GError(parent=self, message=_("target mapwin not defined"))
 
         try:
-            f = open(self.file["points"], "r")
+            f = open(self.file["points"])
             GCPcnt = 0
 
-            for line in f.readlines():
+            for line in f:
                 if line[0] == "#" or line == "":
                     continue
                 line = line.replace("\n", "").strip()
@@ -976,7 +974,7 @@ class GCP(MapFrame, ColumnSorterMixin):
                     self.list.CheckItem(index, check)
                 GCPcnt += 1
 
-        except IOError as err:
+        except OSError as err:
             GError(
                 parent=self,
                 message="%s <%s>. %s%s"
@@ -1035,15 +1033,13 @@ class GCP(MapFrame, ColumnSorterMixin):
             targetMapWin.UpdateMap(render=False)
 
     def OnFocus(self, event):
-        # TODO: it is here just to remove old or obsolate beavior of base class gcp/MapFrame?
+        # TODO: it is here just to remove old or obsolete beavior of base class
+        #       gcp/MapPanel?
         # self.grwiz.SwitchEnv('source')
         pass
 
     def _onMouseLeftUpPointer(self, mapWindow, x, y):
-        if mapWindow == self.SrcMapWindow:
-            coordtype = "source"
-        else:
-            coordtype = "target"
+        coordtype = "source" if mapWindow == self.SrcMapWindow else "target"
 
         coord = (x, y)
         self.SetGCPData(coordtype, coord, self, confirm=True)
@@ -1100,27 +1096,22 @@ class GCP(MapFrame, ColumnSorterMixin):
         if maptype == "raster":
             self.grwiz.SwitchEnv("source")
 
-            if self.clip_to_region:
-                flags = "ac"
-            else:
-                flags = "a"
+            flags = "ac" if self.clip_to_region else "a"
 
-            busy = wx.BusyInfo(_("Rectifying images, please wait..."), parent=self)
-            wx.GetApp().Yield()
+            with wx.BusyInfo(_("Rectifying images, please wait..."), parent=self):
+                wx.GetApp().Yield()
 
-            ret, msg = RunCommand(
-                "i.rectify",
-                parent=self,
-                getErrorMsg=True,
-                quiet=True,
-                group=self.xygroup,
-                extension=self.extension,
-                order=self.gr_order,
-                method=self.gr_method,
-                flags=flags,
-            )
-
-            del busy
+                ret, msg = RunCommand(
+                    "i.rectify",
+                    parent=self,
+                    getErrorMsg=True,
+                    quiet=True,
+                    group=self.xygroup,
+                    extension=self.extension,
+                    order=self.gr_order,
+                    method=self.gr_method,
+                    flags=flags,
+                )
 
             # provide feedback on failure
             if ret != 0:
@@ -1128,21 +1119,19 @@ class GCP(MapFrame, ColumnSorterMixin):
                 print(self.grwiz.src_map, file=sys.stderr)
                 print(msg, file=sys.stderr)
 
-            busy = wx.BusyInfo(
+            with wx.BusyInfo(
                 _("Writing output image to group, please wait..."), parent=self
-            )
-            wx.GetApp().Yield()
+            ):
+                wx.GetApp().Yield()
 
-            ret1, msg1 = RunCommand(
-                "i.group",
-                parent=self,
-                getErrorMsg=True,
-                quiet=False,
-                group=self.xygroup,
-                input="".join([self.grwiz.src_map.split("@")[0], self.extension]),
-            )
-
-            del busy
+                ret1, msg1 = RunCommand(
+                    "i.group",
+                    parent=self,
+                    getErrorMsg=True,
+                    quiet=False,
+                    group=self.xygroup,
+                    input="".join([self.grwiz.src_map.split("@")[0], self.extension]),
+                )
 
             if ret1 != 0:
                 print("ip2i: Error in i.group", file=sys.stderr)
@@ -1246,16 +1235,18 @@ class GCP(MapFrame, ColumnSorterMixin):
 
         if self.gr_order == 1:
             minNumOfItems = 3
-            # self.SetStatusText(_('Insufficient points, 3+ points needed for 1st order'))
+            # self.SetStatusText(_(
+            # "Insufficient points, 3+ points needed for 1st order"))
 
         elif self.gr_order == 2:
             minNumOfItems = 6
-            diff = 6 - numOfItems
-            # self.SetStatusText(_('Insufficient points, 6+ points needed for 2nd order'))
+            # self.SetStatusText(_(
+            # "Insufficient points, 6+ points needed for 2nd order"))
 
         elif self.gr_order == 3:
             minNumOfItems = 10
-            # self.SetStatusText(_('Insufficient points, 10+ points needed for 3rd order'))
+            # self.SetStatusText(_(
+            # "Insufficient points, 10+ points needed for 3rd order"))
 
         for i in range(minNumOfItems - numOfItems):
             self.AddGCP(None)
@@ -1335,7 +1326,7 @@ class GCP(MapFrame, ColumnSorterMixin):
         # SD
         if GCPcount > 0:
             self.rmsmean = sum_fwd_err / GCPcount
-            self.rmssd = (sumsq_fwd_err - self.rmsmean ** 2) ** 0.5
+            self.rmssd = (sumsq_fwd_err - self.rmsmean**2) ** 0.5
             self.rmsthresh = self.rmsmean + sdfactor * self.rmssd
         else:
             self.rmsthresh = 0
@@ -1357,7 +1348,6 @@ class GCP(MapFrame, ColumnSorterMixin):
         self.list.ResizeColumns()
 
     def GetNewExtent(self, region, map=None):
-
         coord_file = utils.GetTempfile()
         newreg = {
             "n": 0.0,
@@ -1446,14 +1436,10 @@ class GCP(MapFrame, ColumnSorterMixin):
             e, n = errlist[i].split()
             fe = float(e)
             fn = float(n)
-            if fe < newreg["w"]:
-                newreg["w"] = fe
-            if fe > newreg["e"]:
-                newreg["e"] = fe
-            if fn < newreg["s"]:
-                newreg["s"] = fn
-            if fn > newreg["n"]:
-                newreg["n"] = fn
+            newreg["w"] = min(fe, newreg["w"])
+            newreg["e"] = max(fe, newreg["e"])
+            newreg["s"] = min(fn, newreg["s"])
+            newreg["n"] = max(fn, newreg["n"])
 
         return newreg
 
@@ -1462,7 +1448,6 @@ class GCP(MapFrame, ColumnSorterMixin):
         self._giface.Help(entry="wxGUI.gcp")
 
     def OnUpdateActive(self, event):
-
         if self.activemap.GetSelection() == 0:
             self.MapWindow = self.SrcMapWindow
             self.Map = self.SrcMap
@@ -1476,7 +1461,6 @@ class GCP(MapFrame, ColumnSorterMixin):
             self.MapWindow.SetFocus()
 
     def UpdateActive(self, win):
-
         # optionally disable tool zoomback tool
         self.GetMapToolbar().Enable(
             "zoomback", enable=(len(self.MapWindow.zoomhistory) > 1)
@@ -1504,10 +1488,8 @@ class GCP(MapFrame, ColumnSorterMixin):
 
         # LL locations
         if self.Map.projinfo["proj"] == "ll":
-            if newreg["n"] > 90.0:
-                newreg["n"] = 90.0
-            if newreg["s"] < -90.0:
-                newreg["s"] = -90.0
+            newreg["n"] = min(newreg["n"], 90.0)
+            newreg["s"] = max(newreg["s"], -90.0)
 
         ce = newreg["w"] + (newreg["e"] - newreg["w"]) / 2
         cn = newreg["s"] + (newreg["n"] - newreg["s"]) / 2
@@ -1535,7 +1517,7 @@ class GCP(MapFrame, ColumnSorterMixin):
     def OnZoomToSource(self, event):
         """Set target map window to match extents of source map window"""
 
-        if not self.MapWindow == self.TgtMapWindow:
+        if self.MapWindow != self.TgtMapWindow:
             self.MapWindow = self.TgtMapWindow
             self.Map = self.TgtMap
             self.UpdateActive(self.TgtMapWindow)
@@ -1548,7 +1530,7 @@ class GCP(MapFrame, ColumnSorterMixin):
     def OnZoomToTarget(self, event):
         """Set source map window to match extents of target map window"""
 
-        if not self.MapWindow == self.SrcMapWindow:
+        if self.MapWindow != self.SrcMapWindow:
             self.MapWindow = self.SrcMapWindow
             self.Map = self.SrcMap
             self.UpdateActive(self.SrcMapWindow)
@@ -1560,7 +1542,6 @@ class GCP(MapFrame, ColumnSorterMixin):
 
     def OnZoomMenuGCP(self, event):
         """Popup Zoom menu"""
-        point = wx.GetMousePosition()
         zoommenu = Menu()
         # Add items to the menu
 
@@ -1584,13 +1565,13 @@ class GCP(MapFrame, ColumnSorterMixin):
     def OnSize(self, event):
         """Adjust Map Windows after GCP Map Display has been resized"""
         # re-render image on idle
-        self.resize = grass.clock()
-        super(MapFrame, self).OnSize(event)
+        self.resize = gs.clock()
+        super(MapPanel, self).OnSize(event)
 
     def OnIdle(self, event):
         """GCP Map Display resized, adjust Map Windows"""
         if self.GetMapToolbar():
-            if self.resize and self.resize + 0.2 < grass.clock():
+            if self.resize and self.resize + 0.2 < gs.clock():
                 srcwidth, srcheight = self.SrcMapWindow.GetSize()
                 tgtwidth, tgtheight = self.TgtMapWindow.GetSize()
                 srcwidth = (srcwidth + tgtwidth) / 2
@@ -1605,7 +1586,44 @@ class GCP(MapFrame, ColumnSorterMixin):
                 self.resize = False
             elif self.resize:
                 event.RequestMore()
-        pass
+
+
+class GCPDisplay(FrameMixin, GCPPanel):
+    """Map display for wrapping map panel with frame methods"""
+
+    def __init__(self, parent, giface, grwiz, id, lmgr, Map, title, camera, **kwargs):
+        # init map panel
+        GCPPanel.__init__(
+            self,
+            parent=parent,
+            giface=giface,
+            grwiz=grwiz,
+            id=id,
+            lmgr=lmgr,
+            Map=Map,
+            title=title,
+            camera=camera,
+            **kwargs,
+        )
+        # set system icon
+        parent.SetIcon(
+            wx.Icon(
+                os.path.join(globalvar.ICONDIR, "grass_map.ico"), wx.BITMAP_TYPE_ICO
+            )
+        )
+
+        # bind to frame
+        parent.Bind(wx.EVT_CLOSE, self.OnQuit)
+
+        # extend shortcuts and create frame accelerator table
+        self.shortcuts_table.append((self.OnFullScreen, wx.ACCEL_NORMAL, wx.WXK_F11))
+        self._initShortcuts()
+
+        # add Map Display panel to Map Display frame
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(self, proportion=1, flag=wx.EXPAND)
+        parent.SetSizer(sizer)
+        parent.Layout()
 
 
 class GCPList(ListCtrl, CheckListCtrlMixin, ListCtrlAutoWidthMixin):
@@ -1618,7 +1636,6 @@ class GCPList(ListCtrl, CheckListCtrlMixin, ListCtrlAutoWidthMixin):
         size=wx.DefaultSize,
         style=wx.LC_REPORT | wx.SUNKEN_BORDER | wx.LC_HRULES | wx.LC_SINGLE_SEL,
     ):
-
         ListCtrl.__init__(self, parent, id, pos, size, style)
 
         self.gcp = gcp  # GCP class
@@ -1642,7 +1659,6 @@ class GCPList(ListCtrl, CheckListCtrlMixin, ListCtrlAutoWidthMixin):
         self.selectedkey = -1
 
     def _Create(self):
-
         if 0:
             # normal, simple columns
             idx_col = 0
@@ -1940,10 +1956,14 @@ class EditGCP(wx.Dialog):
         except ValueError:
             return valuelist
 
-        valuelist.append(self.xcoord.GetValue())
-        valuelist.append(self.ycoord.GetValue())
-        valuelist.append(self.ecoord.GetValue())
-        valuelist.append(self.ncoord.GetValue())
+        valuelist.extend(
+            (
+                self.xcoord.GetValue(),
+                self.ycoord.GetValue(),
+                self.ecoord.GetValue(),
+                self.ncoord.GetValue(),
+            )
+        )
 
         return valuelist
 
@@ -2001,7 +2021,8 @@ class GrSettingsDialog(wx.Dialog):
         btnSave.Bind(wx.EVT_BUTTON, self.OnSave)
         btnSave.SetToolTip(
             _(
-                "Apply and save changes to user settings file (default for next sessions)"
+                "Apply and save changes to user settings file (default for next "
+                "sessions)"
             )
         )
         btnClose.Bind(wx.EVT_BUTTON, self.OnClose)
@@ -2345,7 +2366,7 @@ class GrSettingsDialog(wx.Dialog):
 
         tmp_map = self.srcselection.GetValue()
 
-        if not tmp_map == "" and not tmp_map == src_map:
+        if tmp_map not in ("", src_map):
             self.new_src_map = tmp_map
 
     def OnTgtRastSelection(self, event):
@@ -2364,9 +2385,7 @@ class GrSettingsDialog(wx.Dialog):
         self.parent.extension = self.ext_txt.GetValue()
 
     def UpdateSettings(self):
-        global src_map
-        global tgt_map
-        global maptype
+        global src_map, tgt_map, maptype
 
         layers = None
 
@@ -2433,7 +2452,6 @@ class GrSettingsDialog(wx.Dialog):
 
         srcrender = False
         tgtrender = False
-        reload_target = False
         if self.new_src_map != src_map:
             # remove old layer
             layers = self.parent.grwiz.SrcMap.GetListOfLayers()
@@ -2465,7 +2483,6 @@ class GrSettingsDialog(wx.Dialog):
                 del layers[0]
                 layers = self.parent.grwiz.TgtMap.GetListOfLayers()
             # self.parent.grwiz.TgtMap.DeleteAllLayers()
-            reload_target = True
             tgt_map["raster"] = self.new_tgt_map["raster"]
 
             if tgt_map["raster"] != "":
@@ -2491,7 +2508,7 @@ class GrSettingsDialog(wx.Dialog):
                 self.parent.activemap.SetSelection(0)
                 self.parent.activemap.Enable(False)
                 self.parent.GetMapToolbar().Enable("zoommenu", enable=False)
-        else:
+        else:  # noqa: PLR5501
             if not self.parent.show_target:
                 self.parent.show_target = True
                 self.parent._mgr.GetPane("target").Show()

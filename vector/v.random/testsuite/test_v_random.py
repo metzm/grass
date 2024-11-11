@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-""" 
+"""
 Name:      v.random test
 Purpose:   Tests v.random and its flags/options.
 Authors:   Josef Pudil (original draft)
@@ -30,14 +30,15 @@ class TestVRandom(TestCase):
     def tearDownClass(cls):
         cls.del_temp_region()
 
-    def tearDown(cls):
-        cls.runModule("g.remove", type="vector", flags="f", name=cls.output)
-        cls.runModule("g.remove", type="vector", flags="f", name=cls.output2)
+    def tearDown(self):
+        self.runModule(
+            "g.remove", type="vector", flags="f", name=(self.output, self.output2)
+        )
 
     def test_num_points(self):
         """Checking if number of points equals 100"""
         self.assertModule("v.random", output=self.output, npoints=self.npoints)
-        topology = dict(points=self.npoints)
+        topology = {"points": self.npoints}
         self.assertVectorFitsTopoInfo(vector=self.output, reference=topology)
 
     def test_num_points_3D(self):
@@ -50,7 +51,7 @@ class TestVRandom(TestCase):
             zmax=self.zmax,
             flags="z",
         )
-        topology = dict(points=self.npoints, map3d=1)
+        topology = {"points": self.npoints, "map3d": 1}
         self.assertVectorFitsTopoInfo(vector=self.output, reference=topology)
 
     def test_restrict(self):

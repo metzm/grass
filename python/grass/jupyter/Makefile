@@ -7,10 +7,15 @@ DSTDIR = $(ETC)/python/grass/jupyter
 
 MODULES = \
 	setup \
-	display \
-	interact_display \
-	render3d \
-	utils
+	map \
+	interactivemap \
+	region \
+	map3d \
+	seriesmap \
+	reprojection_renderer \
+	utils \
+	timeseriesmap \
+	baseseriesmap
 
 PYFILES := $(patsubst %,$(DSTDIR)/%.py,$(MODULES) __init__)
 PYCFILES := $(patsubst %,$(DSTDIR)/%.pyc,$(MODULES) __init__)

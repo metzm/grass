@@ -25,7 +25,7 @@ FILES = \
 	$(ETC)/echo$(EXE) \
 	$(ETC)/license \
 	$(ETC)/VERSIONNUMBER \
-	$(HTMLDIR)/help_loc_struct.png \
+	$(HTMLDIR)/help_project_structure.png \
 	$(HTMLDIR)/grassdb.png \
 	$(HTMLDIR)/location.png \
 	$(HTMLDIR)/location-add.png \
@@ -70,6 +70,8 @@ endif
 	sed \
 	-e 's#@GISBASE@#$(RUN_GISBASE)#' \
 	-e 's#@GRASS_VERSION_NUMBER@#$(GRASS_VERSION_NUMBER)#' \
+	-e 's#@GRASS_VERSION_MAJOR@#$(GRASS_VERSION_MAJOR)#' \
+	-e 's#@GRASS_VERSION_MINOR@#$(GRASS_VERSION_MINOR)#' \
 	-e 's#@GRASS_VERSION_GIT@#$(GRASS_VERSION_GIT)#' \
 	-e 's#@LD_LIBRARY_PATH_VAR@#$(LD_LIBRARY_PATH_VAR)#' \
 	-e 's#@START_UP@#$(START_UP)#' \
@@ -81,6 +83,8 @@ $(ARCH_DISTDIR)/$(START_UP).tmp: grass.py
 	rm -f $@
 	sed \
 	-e 's#@GRASS_VERSION_NUMBER@#$(GRASS_VERSION_NUMBER)#' \
+	-e 's#@GRASS_VERSION_MAJOR@#$(GRASS_VERSION_MAJOR)#' \
+	-e 's#@GRASS_VERSION_MINOR@#$(GRASS_VERSION_MINOR)#' \
 	-e 's#@GRASS_VERSION_GIT@#$(GRASS_VERSION_GIT)#' \
 	-e 's#@START_UP@#$(START_UP)#' \
 	-e 's#@GRASS_CONFIG_DIR@#$(GRASS_CONFIG_DIR)#' \
